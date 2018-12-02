@@ -15,6 +15,7 @@ install:
 - pip install pipenv
 #- pip install pysqlite3>=3.8.3 --upgrade
 - pipenv install --deploy
+- pip install .
 script:
 - py.test . --cov=./
 after_success:
