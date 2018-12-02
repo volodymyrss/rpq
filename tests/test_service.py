@@ -33,7 +33,7 @@ def test_async_worker():
     from rq import Connection, Queue, Worker
     with Connection():
         q = Queue()
-        j = q.enqueue(rpq.actor.act,dict(b=1))
+        j = q.enqueue(rpq.actor.act,dict(b=1,url="http://google.com/"),None)
 
     
         print("status",j.status)
