@@ -1,4 +1,5 @@
 import pytest
+import requests
 from flask import url_for
 import os
 import logging
@@ -6,7 +7,16 @@ import time
 
 import rpq.service
 
+from redis import Redis
+from rq import Queue
 
+def get_rq():
+    return Queue(connection=Redis())
+
+def clean_rq():
+    q = get_rq()
+    print("will clean",q.count)
+    q.empty()
 
 @pytest.fixture
 def app():
@@ -36,7 +46,7 @@ def test_async_worker():
         assert j.status
         assert j.return_value
 
-def test_async_get(client):
+def test_async_get_test(live_server):
     logging.getLogger().setLevel(logging.DEBUG)
 
     request_args = dict(
@@ -45,19 +55,80 @@ def test_async_get(client):
                          test_payload = "test payload",
                     )
 
-    r=client.get(url_for('async_get',**request_args))
+    r=requests.get(url_for('async_get',_external=True,**request_args))
     print("r",r)
     print("json",r.json)
 
     assert r.status_code == rpq.actor.HTTP_STATUS_QUEUED
     
-    r=client.get(url_for('async_get',**request_args))
+    r=requests.get(url_for('async_get',_external=True,**request_args))
     assert r.status_code == rpq.actor.HTTP_STATUS_QUEUED
 
     os.system("rqworker -b --logging_level DEBUG -v")
     
-    r=client.get(url_for('async_get',
+    r=requests.get(url_for('async_get',
+                        _external=True,
                         **request_args
                     ))
 
     assert r.status_code == rpq.actor.HTTP_STATUS_READY
+
+    r_json = r.json()
+    print(r_json)
+
+def test_get(live_server):
+    logging.getLogger().setLevel(logging.DEBUG)
+
+ #   live_server.start()
+
+    request_args = dict(
+                         request_timestamp = time.time(),
+                         request_type = rpq.actor.REQUEST_TYPE_TEST,
+                         test_payload = "test payload",
+                    )
+
+    url = url_for('get',_external=True,**request_args)
+    print("url:",url)
+    r=requests.get(url)
+    print("r",r)
+    print("json",r.json())
+
+    assert r.status_code == rpq.actor.HTTP_STATUS_EQUIVALENT_TO
+
+def test_async_get(live_server):
+    logging.getLogger().setLevel(logging.DEBUG)
+
+    clean_rq()
+    assert get_rq().count == 0
+
+    request_args = dict(
+                         request_timestamp = time.time(),
+                         request_type = rpq.actor.REQUEST_TYPE_WORK,
+                         service = "testecho",
+                         test_payload = "test payload",
+                    )
+    
+    r=requests.get(url_for('async_get',_external=True,**request_args))
+    print("r",r)
+    print("json",r.json)
+    
+    assert r.status_code == rpq.actor.HTTP_STATUS_QUEUED
+    assert get_rq().count == 1
+    
+    r=requests.get(url_for('async_get',_external=True,**request_args))
+    assert r.status_code == rpq.actor.HTTP_STATUS_QUEUED
+    assert get_rq().count == 1
+
+
+    os.system("rqworker -b --logging_level DEBUG -v")
+    assert get_rq().count == 0
+
+    r=requests.get(url_for('async_get',
+                        _external=True,
+                        **request_args
+                    ))
+    
+    assert r.status_code == rpq.actor.HTTP_STATUS_READY
+
+    r_json = r.json()
+    print(r_json)
