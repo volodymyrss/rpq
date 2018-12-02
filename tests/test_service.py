@@ -6,25 +6,13 @@ import time
 
 import rpq.service
 
-from xprocess import ProcessStarter
+
 
 @pytest.fixture
 def app():
     app = rpq.service.app
     print("creating app")
     return app
-
-@pytest.fixture
-def worker(xprocess):
-    class Starter(ProcessStarter):
-        pattern = "Cleaning registries for queue: default"
-        #args = ['rqworker']
-        #args = ['python','-m', 'rpq.worker']
-
-    logfile = xprocess.ensure("myserver", Starter)
-    #conn = # create a connection or url/port info to the server
-    return
-
 
 def test_worker(client): 
     logging.getLogger().setLevel(logging.DEBUG)
@@ -51,8 +39,25 @@ def test_async_worker():
 def test_async_get(client):
     logging.getLogger().setLevel(logging.DEBUG)
 
-    r=client.get(url_for('async_get',a=time.time()))
+    request_args = dict(
+                         request_timestamp = time.time(),
+                         request_type = rpq.actor.REQUEST_TYPE_TEST,
+                         test_payload = "test payload",
+                    )
+
+    r=client.get(url_for('async_get',**request_args))
     print("r",r)
     print("json",r.json)
 
-    os.system("rqworker -b")
+    assert r.status_code == rpq.actor.HTTP_STATUS_QUEUED
+    
+    r=client.get(url_for('async_get',**request_args))
+    assert r.status_code == rpq.actor.HTTP_STATUS_QUEUED
+
+    os.system("rqworker -b --logging_level DEBUG -v")
+    
+    r=client.get(url_for('async_get',
+                        **request_args
+                    ))
+
+    assert r.status_code == rpq.actor.HTTP_STATUS_READY

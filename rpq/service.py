@@ -4,7 +4,12 @@ import logging
 import requests
 from collections import OrderedDict
 from rq import Connection, Queue, Worker
+import redis
+
 import rpq.actor
+import rpq.binding
+
+import json
 
 cache_service = "http://cdcixn:"
 
@@ -28,33 +33,34 @@ app = create_app()
 #    r.return_code = 200
 #    return r
 
-def parse_request_args():
-    r={}
-    for k in request.args:
-        r[k] = request.args.get(k,'')
-
-    return OrderedDict(r)
-
 
 @app.route("/async/1.0/get",methods=["GET"])
 def async_get():
     logger.debug("request: %s",request.args)
 
-    pra = parse_request_args()
+    pra = rpq.binding.parse_request_args()
 
     logger.debug("parsed request: %s",pra)
 
-    r = None
-    with Connection():
-        q = Queue()
-        j = q.enqueue(rpq.actor.act,pra)
-        logger.debug("job: %s",dir(j))
-        r = j.result
+    redis_db = redis.StrictRedis(host="localhost", port=6379, db=0)
+
+    r = redis_db.get(pra)
 
     if r:
-        response = jsonify(r)
+        logger.debug("request DONE %s", r)
+        r_json = json.loads(r)
+        logger.debug("request decoded %s", r_json)
+        response = jsonify(r_json)
         status = 200
     else:
+        logger.debug("request unavailable, scheduling:", r)
+
+        with Connection():
+            q = Queue()
+            j = q.enqueue(rpq.actor.act,pra)
+            logger.debug("job: %s",dir(j))
+            r = j.result
+
         response = jsonify(dir(j))
         status = 201
 
