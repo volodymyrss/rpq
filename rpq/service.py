@@ -38,7 +38,7 @@ app = create_app()
 def async_get():
     logger.debug("request: %s",request.args)
 
-    pra = rpq.binding.parse_request_args()
+    pra = rpq.binding.parse_flask_request_args()
 
     logger.debug("parsed request: %s",pra)
 
