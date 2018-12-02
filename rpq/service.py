@@ -4,11 +4,10 @@ import logging
 import requests
 from collections import OrderedDict
 
-from rq import Connection, Queue, Worker
-from rq.job import Job
 
 import redis
 
+import rpq.rq
 import rpq.actor
 import rpq.binding
 import rpq.routing
@@ -42,55 +41,32 @@ def async_get():
     logger.debug("request: %s",request.args)
 
     pra = rpq.binding.parse_flask_request_args()
-    if 'url' not in pra:
-        pra['url'] = url_for('get',_external=True)
     
-    pra_hash = rpq.binding.pra_to_hash(pra)
-
     logger.debug("parsed request: %s",pra)
-    logger.debug("parsed request hash: %s",pra_hash)
 
-    redis_db = redis.StrictRedis(host="localhost", port=6379, db=0)
+    result, status = rpq.rq.get(pra)
 
-
-    r = redis_db.get(pra_hash)
-
-    if r:
-        logger.debug("request DONE %s", r)
-        r_json = json.loads(r)
-        logger.debug("request decoded %s", r_json)
-        response = jsonify(r_json)
-        status = 200
-    else:
-        logger.debug("request result unavailable, searching for job: %s", r)
-
-        job_id = redis_db.get(('jobid-for-request',pra_hash))
-
-        with Connection():
-            q = Queue()
-            if job_id:
-                logger.debug("found job id %s", job_id)
-                j = Job.fetch(job_id.decode("utf-8"))
-                logger.debug("found job %s", j)
-            else:
-                logger.debug("associated job unavailable, scheduling: %s", r)
-                j = q.enqueue(rpq.actor.act,pra)
-                redis_db.set(('jobid-for-request',pra_hash),j._id)
-                logger.debug("scheduled job: %s",dir(j))
-
-                if j.status == "finished":
-                    raise RuntimeError("job is finished but no result registered")
-
-            response = jsonify(dir(j))
-            status = 201
+    response = jsonify(result)
 
     return response, status
 
 @app.route("/1.0/get",methods=["GET"])
 def get():
     pra = rpq.binding.parse_flask_request_args()
+
     logger.debug("request: %s",pra)
 
+    current_routing_table_version = rpq.routing.get_routing_table_version()
+    logger.debug("current routing table: %s",current_routing_table_version)
+
+    routing_table_version = pra.get('routing_table_version',None)
+    
+    logger.debug("requested routing table: %s",current_routing_table_version)
+    if routing_table_version is None:
+        routing_table_version = current_routing_table_version
+    elif current_routing_table_version != routing_table_version:
+        return jsonify({'exception':'no such routing table {}, have {}'.format(routing_table_version,current_routing_table_version)}),500
+    
     # try cache
     
     cache = None
@@ -116,7 +92,7 @@ def retrive_cache():
 
 @app.route("/loopback/<service>",methods=["GET"])
 def loopback_service(service):
-    logger.debug("request to loopback",request.args)
+    logger.debug("request to loopback %s",request.args)
 
     r = jsonify({'echo':service})
     return r, 200

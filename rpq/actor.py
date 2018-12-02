@@ -3,6 +3,7 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import json
+import copy
 
 from flask import url_for
 from rq import Connection, Queue, Worker
@@ -13,6 +14,7 @@ import requests
 import redis
 
 import rpq.binding
+import rpq.rq
 
 redis_db = redis.StrictRedis(host="localhost", port=6379, db=0)
 
@@ -32,22 +34,26 @@ def get_version():
     return "test-version"
 
 def act_test(args):
-    return {"comment":"test"}
+    return {"comment":"test","status":HTTP_STATUS_READY}
 
 def act_work(args):
     logger.debug('ACT to work',args)
 
+    args = copy.deepcopy(args)
     url = args.pop('url') # or hub?
+
+    logger.debug('URL %s',url)
 
     r = requests.get(url,params = args)
 
     try:
         r_json = r.json()
-        status = 200
-        logger.debug('work produced json:',r_json)
+        status = r.status_code
+        logger.debug('work produced json: %s',r_json)
     except Exception as e:
         r_json = dict(exception=repr(e),content=r.content)
         status = 500
+        logger.debug('work produced exception: %s',r_json,e)
 
     result=dict(
                 result = r_json,
@@ -57,27 +63,58 @@ def act_work(args):
 
     return result
 
-def act(pra):
+def act(pra, callback):
     pra_hash = rpq.binding.pra_to_hash(pra)
 
-    logger.debug('pass %s',pra)
+    logger.debug('passing to actor %s',pra)
     
-    request_type = pra.get('request_type',REQUEST_TYPE_TEST)
+    request_type = pra.get('request_type',REQUEST_TYPE_WORK)
     if  request_type == REQUEST_TYPE_TEST:
         r = act_test(pra)
     elif request_type == REQUEST_TYPE_WORK:
         r = act_work(pra)
 
-    r['request_args']=pra
-    r['actor']=dict(
-                 version = get_version()
-               )
+    if r['status'] == HTTP_STATUS_READY:
+        r['request_args']=pra
+        r['actor']=dict(
+                     version = get_version()
+                   )
 
-    logger.debug("storing to redis: key hashe %s", pra_hash)
-    logger.debug("storing to redis: key %s", pra)
-    logger.debug("storing to redis: value %s", r)
+        logger.debug("storing to redis: key hashe %s", pra_hash)
+        logger.debug("storing to redis: key %s", pra)
+        logger.debug("storing to redis: value %s", r)
 
-    redis_db.set(pra_hash,
-                 json.dumps(r))
+        redis_db.set(pra_hash,
+                     json.dumps(r))
+    elif r['status'] == HTTP_STATUS_EQUIVALENT_TO:
+        # note equivalency
+
+        # register new job
+        logger.debug("%s equivalent to %s", pra, r['result']['equivalent_to'])
+        
+        eq_r,eq_status = rpq.rq.get(r['result']['equivalent_to'],
+                          callback = pra
+                        )
+
+        logger.debug("equivalenet result %s : %s", eq_status, eq_r)
+
+        if eq_status == HTTP_STATUS_READY:
+            logger.debug("equivalenet result is COMPLETE, returing it")
+            pre_r = r
+            r = eq_r
+            r['alias'] = pre_r
+            r['status'] = eq_status
+
+            logger.debug("aliased storing to redis: key hashe %s", pra_hash)
+            logger.debug("aliased storing to redis: key %s", pra)
+            logger.debug("aliased storing to redis: value %s", r)
+
+            redis_db.set(pra_hash,
+                         json.dumps(r))
+
+    if callback is not None:
+        logger.debug("callback to %s", callback)
+        callback_r = rpq.rq.get(callback)
+        logger.debug("callback result %s", callback_r)
 
     return r
