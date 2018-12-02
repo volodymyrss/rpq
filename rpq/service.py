@@ -53,7 +53,7 @@ def async_get():
         response = jsonify(r_json)
         status = 200
     else:
-        logger.debug("request unavailable, scheduling:", r)
+        logger.debug("request unavailable, scheduling: %s", r)
 
         with Connection():
             q = Queue()
