@@ -34,7 +34,7 @@ def get_version():
     return "test-version"
 
 def act_test(args):
-    return {"comment":"test","status":HTTP_STATUS_READY}
+    return {"comment":"test"}, HTTP_STATUS_READY
 
 def act_work(args):
     logger.debug('ACT to work',args)
@@ -55,13 +55,8 @@ def act_work(args):
         status = 500
         logger.debug('work produced exception: %s',r_json,e)
 
-    result=dict(
-                result = r_json,
-                status = status,
-            )
 
-
-    return result
+    return r_json, status
 
 def act(pra, callback):
     pra_hash = rpq.binding.pra_to_hash(pra)
@@ -70,15 +65,17 @@ def act(pra, callback):
     
     request_type = pra.get('request_type',REQUEST_TYPE_WORK)
     if  request_type == REQUEST_TYPE_TEST:
-        r = act_test(pra)
+        r, status = act_test(pra)
     elif request_type == REQUEST_TYPE_WORK:
-        r = act_work(pra)
+        r, status = act_work(pra)
 
-    if r['status'] == HTTP_STATUS_READY:
-        r['request_args']=pra
-        r['actor']=dict(
+    if status == HTTP_STATUS_READY:
+        meta = dict(
+                request_args=pra,
+                actor=dict(
                      version = get_version()
                    )
+                )
 
         logger.debug("storing to redis: key hashe %s", pra_hash)
         logger.debug("storing to redis: key %s", pra)
@@ -86,13 +83,16 @@ def act(pra, callback):
 
         redis_db.set(pra_hash,
                      json.dumps(r))
-    elif r['status'] == HTTP_STATUS_EQUIVALENT_TO:
+        redis_db.set(('meta',pra_hash),
+                     json.dumps(meta))
+
+    elif status == HTTP_STATUS_EQUIVALENT_TO:
         # note equivalency
 
         # register new job
-        logger.debug("%s equivalent to %s", pra, r['result']['equivalent_to'])
+        logger.debug("%s equivalent to %s", pra, r['equivalent_to'])
         
-        eq_r,eq_status = rpq.rq.get(r['result']['equivalent_to'],
+        eq_r,eq_status = rpq.rq.get(r['equivalent_to'],
                           callback = pra
                         )
 
@@ -100,17 +100,20 @@ def act(pra, callback):
 
         if eq_status == HTTP_STATUS_READY:
             logger.debug("equivalenet result is COMPLETE, returing it")
-            pre_r = r
-            r = eq_r
-            r['alias'] = pre_r
-            r['status'] = eq_status
+
+            meta=dict(
+                alias = r,
+                eq_status = eq_status,
+            )
 
             logger.debug("aliased storing to redis: key hashe %s", pra_hash)
             logger.debug("aliased storing to redis: key %s", pra)
-            logger.debug("aliased storing to redis: value %s", r)
+            logger.debug("aliased storing to redis: value %s", eq_r)
 
             redis_db.set(pra_hash,
-                         json.dumps(r))
+                         json.dumps(eq_r))
+            redis_db.set(('meta',pra_hash),
+                         json.dumps(meta))
 
     if callback is not None:
         logger.debug("callback to %s", callback)

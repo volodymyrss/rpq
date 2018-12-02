@@ -68,7 +68,3 @@ def request_to_job(pra, callback = None):
         logger.debug("scheduled job: %s",dir(j))
 
     return j
-
-        #if j.status == "finished":
-        #    raise RuntimeError("job is finished but no result registered")
-
