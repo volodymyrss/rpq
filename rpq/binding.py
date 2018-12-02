@@ -8,8 +8,7 @@ def parse_flask_request_args():
     for k in request.args:
         r[k] = request.args.get(k,'')
 
-    if 'url' not in r:
-        r['url'] = url_for('get',_external=True)
+    r['url'] = url_for('get',_external=True)
 
     return OrderedDict(r)
 

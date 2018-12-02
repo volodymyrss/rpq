@@ -19,7 +19,6 @@ import rpq.rq
 redis_db = redis.StrictRedis(host="localhost", port=6379, db=0)
 
 logger=logging.getLogger('rpq.actor')
-logger.setLevel(logging.DEBUG)
 logging.basicConfig(level=logging.DEBUG)
 
 
@@ -36,11 +35,13 @@ def get_version():
 def act_test(args):
     return {"comment":"test"}, HTTP_STATUS_READY
 
-def act_work(args):
-    logger.debug('ACT to work',args)
+def act_work(pra):
+    logger.debug('ACT to work',pra)
 
-    args = copy.deepcopy(args)
-    url = args.pop('url') # or hub?
+    pra_copy = copy.deepcopy(pra)
+
+    url = pra_copy.pop('url')
+    args = pra_copy
 
     logger.debug('URL %s',url)
 
@@ -54,7 +55,6 @@ def act_work(args):
         r_json = dict(exception=repr(e),content=r.content)
         status = 500
         logger.debug('work produced exception: %s',r_json,e)
-
 
     return r_json, status
 

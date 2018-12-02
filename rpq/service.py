@@ -75,10 +75,10 @@ def get():
 
     # otherwise go to routing rules
 
-    route, args = rpq.routing.route(pra)
+    pra = rpq.routing.route(pra)
     
     return jsonify(
-                equivalent_to = dict(url = route, args = args),
+                equivalent_to = pra,
             ), rpq.actor.HTTP_STATUS_EQUIVALENT_TO
 
 
