@@ -1,0 +1,23 @@
+language: python
+python:
+- '3.6'
+dist: trusty
+services:
+- redis
+#- docker
+#- mysql
+before_install:
+- pip install codecov
+- pip install pytest-cov
+- pip install codacy-coverage
+install:
+#- pip install -r requirements.txt
+- pip install pipenv
+#- pip install pysqlite3>=3.8.3 --upgrade
+- pipenv install --deploy
+script:
+- py.test . --cov=./
+after_success:
+- coverage xml
+- python-codacy-coverage -r coverage.xml
+- codecov
