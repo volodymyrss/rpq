@@ -23,11 +23,17 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 HTTP_STATUS_READY = 200
+HTTP_STATUS_NOTFOUND = 404
+HTTP_STATUS_BADREQUEST = 400
+
 HTTP_STATUS_QUEUED = 201
 HTTP_STATUS_EQUIVALENT_TO = 210
 
 REQUEST_TYPE_TEST = "test"
 REQUEST_TYPE_WORK = "work"
+
+def http_status_permanent(status):
+    return status in (HTTP_STATUS_READY, HTTP_STATUS_NOTFOUND, HTTP_STATUS_BADREQUEST)
 
 def get_version():
     return "test-version"
@@ -51,10 +57,14 @@ def act_work(pra):
         r_json = r.json()
         status = r.status_code
         logger.debug('work produced json: %s',r_json)
+    except json.JSONDecodeError as e:
+        status = r.status_code
+        r_json = dict(content = r.content.decode('utf-8'))
+        logger.debug('work produced json: %s',r_json)
     except Exception as e:
         r_json = dict(exception=repr(e),content=r.content)
         status = 500
-        logger.debug('work produced exception: %s',r_json,e)
+        logger.debug('work produced exception: %s, result %s',e,r_json)
 
     return r_json, status
 
@@ -69,7 +79,7 @@ def act(pra, callback):
     elif request_type == REQUEST_TYPE_WORK:
         r, status = act_work(pra)
 
-    if status == HTTP_STATUS_READY:
+    if http_status_permanent(status):
         meta = dict(
                 request_args=pra,
                 actor=dict(
@@ -98,7 +108,7 @@ def act(pra, callback):
 
         logger.debug("equivalenet result %s : %s", eq_status, eq_r)
 
-        if eq_status == HTTP_STATUS_READY:
+        if http_status_permanent(eq_status):
             logger.debug("equivalenet result is COMPLETE, returing it")
 
             meta=dict(

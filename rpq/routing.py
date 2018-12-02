@@ -18,8 +18,13 @@ def route(pra):
     pra_copy = copy.deepcopy(pra)
     service = pra_copy.pop('service')
 
+    if 'path' in pra_copy:
+        path = pra_copy.pop('path')
+    else:
+        path = ""
+
     odahub_rp = os.environ.get('ODAHUB_RP_PATTERN',url_for('loopback_service',service='SERVICE',_external=True).replace('SERVICE','{service}'))
 
-    pra_copy['url'] = odahub_rp.format(service = service)
+    pra_copy['url'] = odahub_rp.format(service = service, path=path)
     
     return pra_copy
