@@ -11,7 +11,7 @@ from rq import Connection, Queue, Worker
 def act(args):
     logger.debug('pass %s',args)
 
-    return dict(result_from=args)
+    return 1# dict(result_from=args)
 
     #with Connection():
     #    q = Queue()

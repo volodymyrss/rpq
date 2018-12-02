@@ -18,7 +18,7 @@ def app():
 def worker(xprocess):
     class Starter(ProcessStarter):
         pattern = "Cleaning registries for queue: default"
-        args = ['rqworker']
+        #args = ['rqworker']
         #args = ['python','-m', 'rpq.worker']
 
     logfile = xprocess.ensure("myserver", Starter)
@@ -26,7 +26,7 @@ def worker(xprocess):
     return
 
 
-def test_worker(client,worker):
+def test_worker(client): 
     logging.getLogger().setLevel(logging.DEBUG)
 
     print(client.get(url_for('get')))
@@ -37,9 +37,18 @@ def test_async_worker():
         q = Queue()
         j = q.enqueue(rpq.actor.act,dict(b=1))
 
-    os.system("rqworker -b")
+    
+        print("status",j.status)
+        assert j.status == "queued"    
 
-def test_async_get(client,worker):
+        os.system("rqworker -b --logging_level DEBUG -v")
+        print("status",j.status)
+        assert j.status == "finished"    
+
+        assert j.status
+        assert j.return_value
+
+def test_async_get(client):
     logging.getLogger().setLevel(logging.DEBUG)
 
     r=client.get(url_for('async_get',a=time.time()))
